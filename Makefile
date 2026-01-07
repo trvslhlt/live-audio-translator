@@ -1,21 +1,27 @@
-.PHONY: install run clean clean-models clean-all test lint help
+.PHONY: install dev run clean clean-models clean-all test lint format help
 
 # Default target
 help:
 	@echo "Live Audio Translator - Development Commands"
 	@echo ""
 	@echo "  make install      - Install dependencies (first time setup)"
+	@echo "  make dev          - Install with dev dependencies (ruff)"
 	@echo "  make run          - Run the application"
 	@echo "  make clean        - Remove Python cache files"
 	@echo "  make clean-models - Remove downloaded AI models"
 	@echo "  make clean-all    - Full clean (venv, cache, models)"
 	@echo "  make test         - Run component tests"
-	@echo "  make lint         - Check code style"
+	@echo "  make lint         - Check code style (ruff)"
+	@echo "  make format       - Auto-format code (ruff)"
 	@echo ""
 
 # Install dependencies
 install:
 	./install.sh
+
+# Install with dev dependencies
+dev: install
+	uv pip install -e ".[dev]"
 
 # Run the application
 run:
@@ -53,10 +59,11 @@ clean-all: clean clean-models
 	rm -rf .venv
 	@echo "✓ Full clean complete. Run 'make install' to set up again."
 
-# Lint code (requires ruff to be installed)
+# Lint code
 lint:
-	@if command -v ruff >/dev/null 2>&1; then \
-		ruff check src/; \
-	else \
-		echo "ruff not installed. Install with: uv pip install ruff"; \
-	fi
+	.venv/bin/ruff check src/
+
+# Format code
+format:
+	.venv/bin/ruff format src/
+	.venv/bin/ruff check --fix src/

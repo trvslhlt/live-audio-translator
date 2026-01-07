@@ -2,15 +2,14 @@
 
 import json
 import logging
-import os
 import re
 import shutil
 import tempfile
 import wave
-from dataclasses import dataclass, field, asdict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Callable
 
 import numpy as np
 
@@ -37,8 +36,8 @@ class StreamingAudioWriter:
     """
 
     def __init__(self):
-        self._temp_file: Optional[tempfile.NamedTemporaryFile] = None
-        self._wav_file: Optional[wave.Wave_write] = None
+        self._temp_file: tempfile.NamedTemporaryFile | None = None
+        self._wav_file: wave.Wave_write | None = None
         self._total_frames = 0
         self._is_open = False
 
@@ -48,15 +47,12 @@ class StreamingAudioWriter:
             self.close()
 
         # Create temp file that persists after closing
-        self._temp_file = tempfile.NamedTemporaryFile(
-            suffix='.wav',
-            delete=False
-        )
+        self._temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         temp_path = self._temp_file.name
         self._temp_file.close()  # Close so wave can open it
 
         # Open as WAV for writing
-        self._wav_file = wave.open(temp_path, 'wb')
+        self._wav_file = wave.open(temp_path, "wb")
         self._wav_file.setnchannels(AUDIO_CHANNELS)
         self._wav_file.setsampwidth(AUDIO_SAMPLE_WIDTH)
         self._wav_file.setframerate(AUDIO_SAMPLE_RATE)
@@ -87,7 +83,7 @@ class StreamingAudioWriter:
         return self._total_frames / AUDIO_SAMPLE_RATE
 
     @property
-    def temp_path(self) -> Optional[Path]:
+    def temp_path(self) -> Path | None:
         """Get the path to the temporary audio file."""
         if self._temp_file:
             return Path(self._temp_file.name)
@@ -98,7 +94,7 @@ class StreamingAudioWriter:
         """Check if currently recording."""
         return self._is_open
 
-    def close(self) -> Optional[Path]:
+    def close(self) -> Path | None:
         """
         Close the audio stream and return the temp file path.
 
@@ -158,14 +154,15 @@ class StreamingAudioWriter:
 def sanitize_filename(name: str) -> str:
     """Convert a string to a safe filename."""
     # Replace spaces with underscores, remove unsafe characters
-    safe = re.sub(r'[^\w\s-]', '', name)
-    safe = re.sub(r'\s+', '_', safe)
+    safe = re.sub(r"[^\w\s-]", "", name)
+    safe = re.sub(r"\s+", "_", safe)
     return safe[:50]  # Limit length
 
 
 @dataclass
 class TranscriptEntry:
     """A single transcript entry with original and translated text."""
+
     timestamp: str
     source_lang: str
     original_text: str
@@ -182,6 +179,7 @@ class TranscriptEntry:
 @dataclass
 class Session:
     """A transcription session containing multiple entries."""
+
     id: str
     title: str
     created_at: str
@@ -245,12 +243,12 @@ class Session:
 class SessionManager:
     """Manages saving and loading transcription sessions."""
 
-    def __init__(self, sessions_dir: Optional[Path] = None):
+    def __init__(self, sessions_dir: Path | None = None):
         self.sessions_dir = sessions_dir or SESSIONS_DIR
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
-        self._current_session: Optional[Session] = None
+        self._current_session: Session | None = None
 
-    def new_session(self, title: Optional[str] = None, language_mode: str = "auto") -> Session:
+    def new_session(self, title: str | None = None, language_mode: str = "auto") -> Session:
         """Create a new session."""
         now = datetime.now()
         session_id = now.strftime("%Y%m%d_%H%M%S")
@@ -268,7 +266,7 @@ class SessionManager:
         return self._current_session
 
     @property
-    def current_session(self) -> Optional[Session]:
+    def current_session(self) -> Session | None:
         return self._current_session
 
     def add_entry(self, timestamp: str, source_lang: str, original: str, translated: str):
@@ -279,11 +277,11 @@ class SessionManager:
 
     def save_session_folder(
         self,
-        session: Optional[Session] = None,
-        audio_chunks: Optional[list[np.ndarray]] = None,
-        audio_temp_path: Optional[Path] = None,
-        parent_dir: Optional[Path] = None,
-        progress_callback: Optional[Callable[[int, str], None]] = None
+        session: Session | None = None,
+        audio_chunks: list[np.ndarray] | None = None,
+        audio_temp_path: Path | None = None,
+        parent_dir: Path | None = None,
+        progress_callback: Callable[[int, str], None] | None = None,
     ) -> Path:
         """
         Save a session as a folder containing all files.
@@ -359,7 +357,7 @@ class SessionManager:
             audio_int16 = (combined * 32767).astype(np.int16)
 
             report_progress(70, "Writing audio file...")
-            with wave.open(str(audio_path), 'wb') as wav_file:
+            with wave.open(str(audio_path), "wb") as wav_file:
                 wav_file.setnchannels(AUDIO_CHANNELS)
                 wav_file.setsampwidth(AUDIO_SAMPLE_WIDTH)
                 wav_file.setframerate(AUDIO_SAMPLE_RATE)
@@ -386,21 +384,21 @@ class SessionManager:
         if not metadata_path.exists():
             raise FileNotFoundError(f"No session.json found in: {folder_path}")
 
-        with open(metadata_path, "r", encoding="utf-8") as f:
+        with open(metadata_path, encoding="utf-8") as f:
             data = json.load(f)
 
         session = Session.from_dict(data)
         log.info(f"Session loaded from folder: {session.title}")
         return session
 
-    def get_folder_audio_path(self, folder_path: Path) -> Optional[Path]:
+    def get_folder_audio_path(self, folder_path: Path) -> Path | None:
         """Get the audio file path from a session folder, if it exists."""
         audio_path = folder_path / SESSION_AUDIO_FILE
         return audio_path if audio_path.exists() else None
 
     # Legacy methods for backward compatibility with internal session storage
 
-    def save_session(self, session: Optional[Session] = None, save_dir: Optional[Path] = None) -> Path:
+    def save_session(self, session: Session | None = None, save_dir: Path | None = None) -> Path:
         """Save a session to disk (legacy format - single JSON file)."""
         session = session or self._current_session
         if session is None:
@@ -422,7 +420,7 @@ class SessionManager:
         if not filepath.exists():
             raise FileNotFoundError(f"Session not found: {session_id}")
 
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             data = json.load(f)
 
         session = Session.from_dict(data)
@@ -434,17 +432,19 @@ class SessionManager:
         sessions = []
         for filepath in sorted(self.sessions_dir.glob("*.json"), reverse=True):
             try:
-                with open(filepath, "r", encoding="utf-8") as f:
+                with open(filepath, encoding="utf-8") as f:
                     data = json.load(f)
                 session_id = data["id"]
                 audio_path = self.sessions_dir / f"{session_id}.wav"
-                sessions.append({
-                    "id": session_id,
-                    "title": data["title"],
-                    "created_at": data["created_at"],
-                    "entry_count": len(data.get("entries", [])),
-                    "has_audio": audio_path.exists(),
-                })
+                sessions.append(
+                    {
+                        "id": session_id,
+                        "title": data["title"],
+                        "created_at": data["created_at"],
+                        "entry_count": len(data.get("entries", [])),
+                        "has_audio": audio_path.exists(),
+                    }
+                )
             except (json.JSONDecodeError, KeyError) as e:
                 log.warning(f"Failed to read session {filepath}: {e}")
         return sessions
@@ -479,10 +479,7 @@ class SessionManager:
         log.info(f"Session renamed to: {new_title}")
 
     def save_session_audio(
-        self,
-        session_id: str,
-        audio_chunks: list[np.ndarray],
-        save_dir: Optional[Path] = None
+        self, session_id: str, audio_chunks: list[np.ndarray], save_dir: Path | None = None
     ) -> Path:
         """Save audio chunks as a WAV file (legacy format)."""
         if not audio_chunks:
@@ -495,7 +492,7 @@ class SessionManager:
         audio_int16 = (combined * 32767).astype(np.int16)
 
         audio_path = target_dir / f"{session_id}.wav"
-        with wave.open(str(audio_path), 'wb') as wav_file:
+        with wave.open(str(audio_path), "wb") as wav_file:
             wav_file.setnchannels(1)
             wav_file.setsampwidth(2)
             wav_file.setframerate(16000)
@@ -504,7 +501,7 @@ class SessionManager:
         log.info(f"Session audio saved: {audio_path} ({len(combined) / 16000:.1f}s)")
         return audio_path
 
-    def get_audio_path(self, session_id: str) -> Optional[Path]:
+    def get_audio_path(self, session_id: str) -> Path | None:
         """Get the path to a session's audio file, if it exists."""
         audio_path = self.sessions_dir / f"{session_id}.wav"
         return audio_path if audio_path.exists() else None

@@ -11,9 +11,9 @@ except ImportError:
 class WhisperTranscriber:
     """Transcribes audio to text using OpenAI Whisper."""
 
-    SUPPORTED_LANGUAGES = {'en': 'english', 'fr': 'french'}
+    SUPPORTED_LANGUAGES = {"en": "english", "fr": "french"}
 
-    def __init__(self, model_name: str = 'small'):
+    def __init__(self, model_name: str = "small"):
         """
         Initialize Whisper transcriber.
 
@@ -36,10 +36,7 @@ class WhisperTranscriber:
         return self._model is not None
 
     def transcribe(
-        self,
-        audio: np.ndarray,
-        language: str | None = None,
-        task: str = 'transcribe'
+        self, audio: np.ndarray, language: str | None = None, task: str = "transcribe"
     ) -> dict:
         """
         Transcribe or translate audio to text.
@@ -65,20 +62,20 @@ class WhisperTranscriber:
 
         # Whisper transcription options
         options = {
-            'fp16': False,  # Use FP32 for CPU compatibility
-            'task': task,   # 'transcribe' or 'translate' (translate always outputs English)
+            "fp16": False,  # Use FP32 for CPU compatibility
+            "task": task,  # 'transcribe' or 'translate' (translate always outputs English)
         }
 
         if language:
-            options['language'] = language
+            options["language"] = language
 
         result = self._model.transcribe(audio, **options)
 
         return {
-            'text': result['text'].strip(),
-            'language': result.get('language', language or 'unknown'),
-            'task': task,
-            'segments': result.get('segments', [])
+            "text": result["text"].strip(),
+            "language": result.get("language", language or "unknown"),
+            "task": task,
+            "segments": result.get("segments", []),
         }
 
     def detect_language(self, audio: np.ndarray) -> str:

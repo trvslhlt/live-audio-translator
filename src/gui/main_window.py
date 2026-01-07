@@ -4,14 +4,25 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QComboBox, QTextEdit, QLabel, QFrame,
-    QMessageBox, QApplication, QInputDialog, QFileDialog,
-    QCheckBox, QProgressDialog
-)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, QSettings
+from PyQt6.QtCore import QSettings, Qt, QThread, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QFont, QTextCursor
+from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QProgressDialog,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 log = logging.getLogger(__name__)
 
@@ -31,11 +42,13 @@ class TranscriptionWorker(QThread):
         self.transcriber = transcriber
         self.translator = translator
         self._running = False
-        self._language_mode = 'auto'  # 'auto', 'en', 'fr'
+        self._language_mode = "auto"  # 'auto', 'en', 'fr'
         self._target_language = None  # None for auto, or 'en'/'fr'
         self._use_whisper_translate = False  # Use Whisper's direct translation for FR->EN
 
-    def set_language_mode(self, mode: str, target: str | None = None, use_whisper_translate: bool = False):
+    def set_language_mode(
+        self, mode: str, target: str | None = None, use_whisper_translate: bool = False
+    ):
         """Set the language detection/translation mode."""
         self._language_mode = mode
         self._target_language = target
@@ -61,68 +74,80 @@ class TranscriptionWorker(QThread):
 
                 # For FR->EN, use Whisper's direct translation (better quality)
                 # But also get the original transcription for display
-                if self._use_whisper_translate and self._target_language == 'en':
+                if self._use_whisper_translate and self._target_language == "en":
                     # First, transcribe to get original text in source language
                     log.info("  Transcribing (source language)...")
                     transcribe_result = self.transcriber.transcribe(
                         audio_chunk,
-                        language=self._language_mode if self._language_mode != 'auto' else None,
-                        task='transcribe'
+                        language=self._language_mode if self._language_mode != "auto" else None,
+                        task="transcribe",
                     )
-                    original_text = transcribe_result['text']
-                    detected_lang = transcribe_result['language']
+                    original_text = transcribe_result["text"]
+                    detected_lang = transcribe_result["language"]
 
                     if not original_text.strip():
                         log.info("  (silence/no speech detected)")
                         self.status_changed.emit("Listening...")
                         continue
 
-                    log.info(f"  Detected: [{detected_lang.upper()}] {original_text[:60]}{'...' if len(original_text) > 60 else ''}")
+                    log.info(
+                        f"  Detected: [{detected_lang.upper()}] {original_text[:60]}{'...' if len(original_text) > 60 else ''}"
+                    )
 
                     # If source is already English, no translation needed
-                    if detected_lang.startswith('en'):
+                    if detected_lang.startswith("en"):
                         log.info("  (source is English, no translation needed)")
-                        self.text_ready.emit(original_text, original_text, detected_lang, timestamp, audio_chunk)
+                        self.text_ready.emit(
+                            original_text, original_text, detected_lang, timestamp, audio_chunk
+                        )
                     else:
                         # Now translate using Whisper's translate task
                         log.info("  Translating to English (Whisper)...")
                         translate_result = self.transcriber.transcribe(
-                            audio_chunk,
-                            language=detected_lang,
-                            task='translate'
+                            audio_chunk, language=detected_lang, task="translate"
                         )
-                        translated_text = translate_result['text']
-                        log.info(f"  Translated: [EN] {translated_text[:60]}{'...' if len(translated_text) > 60 else ''}")
-                        self.text_ready.emit(original_text, translated_text, detected_lang, timestamp, audio_chunk)
+                        translated_text = translate_result["text"]
+                        log.info(
+                            f"  Translated: [EN] {translated_text[:60]}{'...' if len(translated_text) > 60 else ''}"
+                        )
+                        self.text_ready.emit(
+                            original_text, translated_text, detected_lang, timestamp, audio_chunk
+                        )
 
                 else:
                     # Standard transcribe -> translate pipeline (for EN->FR)
                     log.info("  Transcribing...")
-                    if self._language_mode == 'auto':
+                    if self._language_mode == "auto":
                         result = self.transcriber.transcribe(audio_chunk, language=None)
                     else:
-                        result = self.transcriber.transcribe(audio_chunk, language=self._language_mode)
+                        result = self.transcriber.transcribe(
+                            audio_chunk, language=self._language_mode
+                        )
 
-                    original_text = result['text']
-                    detected_lang = result['language']
+                    original_text = result["text"]
+                    detected_lang = result["language"]
 
                     if not original_text.strip():
                         log.info("  (silence/no speech detected)")
                         self.status_changed.emit("Listening...")
                         continue
 
-                    log.info(f"  Detected: [{detected_lang.upper()}] {original_text[:60]}{'...' if len(original_text) > 60 else ''}")
+                    log.info(
+                        f"  Detected: [{detected_lang.upper()}] {original_text[:60]}{'...' if len(original_text) > 60 else ''}"
+                    )
 
                     # Translate using Argos (for EN->FR or when not using Whisper translate)
                     log.info("  Translating (Argos)...")
                     translated_text, target_lang = self.translator.translate_auto(
-                        original_text,
-                        detected_lang,
-                        self._target_language
+                        original_text, detected_lang, self._target_language
                     )
-                    log.info(f"  Translated: [{target_lang.upper()}] {translated_text[:60]}{'...' if len(translated_text) > 60 else ''}")
+                    log.info(
+                        f"  Translated: [{target_lang.upper()}] {translated_text[:60]}{'...' if len(translated_text) > 60 else ''}"
+                    )
 
-                    self.text_ready.emit(original_text, translated_text, detected_lang, timestamp, audio_chunk)
+                    self.text_ready.emit(
+                        original_text, translated_text, detected_lang, timestamp, audio_chunk
+                    )
 
                 self.status_changed.emit("Listening...")
 
@@ -153,6 +178,7 @@ class MainWindow(QMainWindow):
 
         # Session management
         from src.storage.sessions import SessionManager, StreamingAudioWriter
+
         self.session_manager = SessionManager()
         self._recording_session = False
         self._audio_writer = StreamingAudioWriter()  # Streams audio to disk
@@ -273,17 +299,11 @@ class MainWindow(QMainWindow):
     def _load_session_folder(self):
         """Load a previously saved session folder."""
         # Get last used directory
-        default_dir = self._settings.value(
-            "last_save_dir",
-            str(Path.home() / "Documents")
-        )
+        default_dir = self._settings.value("last_save_dir", str(Path.home() / "Documents"))
 
         # Prompt user to select a session folder
         folder_path = QFileDialog.getExistingDirectory(
-            self,
-            "Select a session folder to load",
-            default_dir,
-            QFileDialog.Option.ShowDirsOnly
+            self, "Select a session folder to load", default_dir, QFileDialog.Option.ShowDirsOnly
         )
 
         if not folder_path:
@@ -298,7 +318,7 @@ class MainWindow(QMainWindow):
                 self,
                 "Invalid Session Folder",
                 "This folder doesn't contain a session.json file.\n\n"
-                "Please select a folder that was saved by this app."
+                "Please select a folder that was saved by this app.",
             )
             return
 
@@ -310,10 +330,7 @@ class MainWindow(QMainWindow):
             self.transcript_area.clear()
             for entry in session.entries:
                 self._display_entry(
-                    entry.original_text,
-                    entry.translated_text,
-                    entry.source_lang,
-                    entry.timestamp
+                    entry.original_text, entry.translated_text, entry.source_lang, entry.timestamp
                 )
 
             # Check for audio
@@ -330,30 +347,34 @@ class MainWindow(QMainWindow):
                 f"Loaded session: {session.title}\n"
                 f"Entries: {len(session.entries)}\n"
                 f"Created: {session.created_at[:10]}"
-                f"{audio_info}"
+                f"{audio_info}",
             )
 
         except Exception as e:
             log.error(f"Failed to load session: {e}")
-            QMessageBox.critical(
-                self,
-                "Load Error",
-                f"Failed to load session:\n{e}"
-            )
+            QMessageBox.critical(self, "Load Error", f"Failed to load session:\n{e}")
 
     def _display_entry(self, original: str, translated: str, source_lang: str, timestamp: str):
         """Display a transcript entry in the UI."""
         cursor = self.transcript_area.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
 
-        source_label = "EN" if source_lang.startswith('en') else "FR" if source_lang.startswith('fr') else source_lang.upper()
+        source_label = (
+            "EN"
+            if source_lang.startswith("en")
+            else "FR"
+            if source_lang.startswith("fr")
+            else source_lang.upper()
+        )
         target_label = "FR" if source_label == "EN" else "EN"
 
         cursor.insertHtml(f'<span style="color: #888; font-size: 10px;">{timestamp}</span><br>')
         cursor.insertHtml(f'<span style="color: #666;">[{source_label}]</span> {original}<br>')
         if translated != original:
-            cursor.insertHtml(f'<span style="color: #2196F3;">[{target_label}] {translated}</span><br>')
-        cursor.insertHtml('<br>')
+            cursor.insertHtml(
+                f'<span style="color: #2196F3;">[{target_label}] {translated}</span><br>'
+            )
+        cursor.insertHtml("<br>")
 
         self.transcript_area.setTextCursor(cursor)
         self.transcript_area.ensureCursorVisible()
@@ -375,9 +396,7 @@ class MainWindow(QMainWindow):
         """Start capturing and translating audio."""
         if not all([self.audio_capture, self.transcriber, self.translator]):
             QMessageBox.warning(
-                self,
-                "Not Ready",
-                "The application is still initializing. Please wait."
+                self, "Not Ready", "The application is still initializing. Please wait."
             )
             return
 
@@ -395,11 +414,7 @@ class MainWindow(QMainWindow):
             self.audio_capture.start()
 
             # Create and start worker
-            self.worker = TranscriptionWorker(
-                self.audio_capture,
-                self.transcriber,
-                self.translator
-            )
+            self.worker = TranscriptionWorker(self.audio_capture, self.transcriber, self.translator)
             self.worker.text_ready.connect(self._on_text_ready)
             self.worker.error_occurred.connect(self._on_error)
             self.worker.status_changed.connect(self._on_status_changed)
@@ -432,11 +447,7 @@ class MainWindow(QMainWindow):
                 self.status_label.setText("Recording session...")
 
         except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to start audio capture:\n{str(e)}"
-            )
+            QMessageBox.critical(self, "Error", f"Failed to start audio capture:\n{str(e)}")
 
     def _stop_listening(self):
         """Stop capturing audio."""
@@ -487,10 +498,7 @@ class MainWindow(QMainWindow):
         audio_duration = self._audio_writer.duration_seconds
 
         # Get last used save directory, default to Documents
-        default_dir = self._settings.value(
-            "last_save_dir",
-            str(Path.home() / "Documents")
-        )
+        default_dir = self._settings.value("last_save_dir", str(Path.home() / "Documents"))
 
         # Build info string
         duration_str = ""
@@ -504,7 +512,7 @@ class MainWindow(QMainWindow):
             self,
             f"Choose where to save session ({len(session.entries)} entries{duration_str})",
             default_dir,
-            QFileDialog.Option.ShowDirsOnly
+            QFileDialog.Option.ShowDirsOnly,
         )
 
         if not save_dir:
@@ -513,7 +521,7 @@ class MainWindow(QMainWindow):
                 self,
                 "Discard Session?",
                 "No save location selected. Discard this recording session?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.No:
                 # Try again - but we need to restore the audio temp path
@@ -536,10 +544,7 @@ class MainWindow(QMainWindow):
         # Ask for session title
         default_title = datetime.now().strftime("Session %Y-%m-%d %H:%M")
         title, ok = QInputDialog.getText(
-            self,
-            "Session Title",
-            "Enter a title for this session:",
-            text=default_title
+            self, "Session Title", "Enter a title for this session:", text=default_title
         )
 
         if not ok:
@@ -569,7 +574,7 @@ class MainWindow(QMainWindow):
                 session=session,
                 audio_temp_path=audio_temp_path,
                 parent_dir=save_path,
-                progress_callback=update_progress
+                progress_callback=update_progress,
             )
 
             progress.close()
@@ -586,17 +591,13 @@ class MainWindow(QMainWindow):
                 self,
                 "Session Saved",
                 f"Session saved to:\n{session_folder}\n\n"
-                f"Contains:\n" + "\n".join(f"  - {f}" for f in files)
+                f"Contains:\n" + "\n".join(f"  - {f}" for f in files),
             )
 
         except Exception as e:
             progress.close()
             log.error(f"Failed to save session: {e}")
-            QMessageBox.warning(
-                self,
-                "Save Error",
-                f"Failed to save session:\n{e}"
-            )
+            QMessageBox.warning(self, "Save Error", f"Failed to save session:\n{e}")
             # Clean up temp file on error
             if audio_temp_path and audio_temp_path.exists():
                 audio_temp_path.unlink()
@@ -613,17 +614,14 @@ class MainWindow(QMainWindow):
             return
 
         # Get last used save directory
-        default_dir = self._settings.value(
-            "last_save_dir",
-            str(Path.home() / "Documents")
-        )
+        default_dir = self._settings.value("last_save_dir", str(Path.home() / "Documents"))
 
         # Prompt user for save location
         save_dir = QFileDialog.getExistingDirectory(
             self,
             f"Choose where to save session ({len(session.entries)} entries)",
             default_dir,
-            QFileDialog.Option.ShowDirsOnly
+            QFileDialog.Option.ShowDirsOnly,
         )
 
         if not save_dir:
@@ -631,7 +629,7 @@ class MainWindow(QMainWindow):
                 self,
                 "Discard Session?",
                 "No save location selected. Discard this recording session?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.No:
                 self._recording_session = True
@@ -667,7 +665,7 @@ class MainWindow(QMainWindow):
                 session=session,
                 audio_temp_path=audio_temp_path,
                 parent_dir=save_path,
-                progress_callback=update_progress
+                progress_callback=update_progress,
             )
             progress.close()
             self.status_label.setText(f"Session saved: {session.title}")
@@ -686,16 +684,18 @@ class MainWindow(QMainWindow):
         if self.worker:
             if mode_data == "auto":
                 # Auto mode: use Whisper translate when non-English is detected
-                self.worker.set_language_mode('auto', 'en', use_whisper_translate=True)
+                self.worker.set_language_mode("auto", "en", use_whisper_translate=True)
             elif mode_data == "fr_to_en":
                 # French to English: use Whisper's direct translation (better quality)
-                self.worker.set_language_mode('fr', 'en', use_whisper_translate=True)
+                self.worker.set_language_mode("fr", "en", use_whisper_translate=True)
             elif mode_data == "en_to_fr":
                 # English to French: use Argos (Whisper can only translate TO English)
-                self.worker.set_language_mode('en', 'fr', use_whisper_translate=False)
+                self.worker.set_language_mode("en", "fr", use_whisper_translate=False)
 
     @pyqtSlot(str, str, str, str, object)
-    def _on_text_ready(self, original: str, translated: str, source_lang: str, timestamp: str, audio_chunk):
+    def _on_text_ready(
+        self, original: str, translated: str, source_lang: str, timestamp: str, audio_chunk
+    ):
         """Handle new transcription/translation."""
         # Display the entry in the UI
         self._display_entry(original, translated, source_lang, timestamp)
@@ -716,7 +716,11 @@ class MainWindow(QMainWindow):
     def _on_status_changed(self, status: str):
         """Update status label."""
         if self._recording_session:
-            entries = len(self.session_manager.current_session.entries) if self.session_manager.current_session else 0
+            entries = (
+                len(self.session_manager.current_session.entries)
+                if self.session_manager.current_session
+                else 0
+            )
             duration = self._audio_writer.duration_seconds
             mins = int(duration // 60)
             secs = int(duration % 60)
@@ -745,7 +749,9 @@ class MainWindow(QMainWindow):
                     self,
                     "Session in Progress",
                     "You have a recording session in progress. Save it before closing?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+                    QMessageBox.StandardButton.Yes
+                    | QMessageBox.StandardButton.No
+                    | QMessageBox.StandardButton.Cancel,
                 )
                 if reply == QMessageBox.StandardButton.Cancel:
                     event.ignore()

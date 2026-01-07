@@ -11,8 +11,8 @@ class ArgosTranslator:
     """Translates text between English and French using Argos Translate."""
 
     LANGUAGE_PAIRS = [
-        ('en', 'fr'),
-        ('fr', 'en'),
+        ("en", "fr"),
+        ("fr", "en"),
     ]
 
     def __init__(self):
@@ -38,9 +38,12 @@ class ArgosTranslator:
             if not self._is_package_installed(from_lang, to_lang):
                 # Find and install the package
                 package = next(
-                    (p for p in available_packages
-                     if p.from_code == from_lang and p.to_code == to_lang),
-                    None
+                    (
+                        p
+                        for p in available_packages
+                        if p.from_code == from_lang and p.to_code == to_lang
+                    ),
+                    None,
                 )
                 if package:
                     argostranslate.package.install_from_path(package.download())
@@ -54,26 +57,16 @@ class ArgosTranslator:
     def _is_package_installed(self, from_lang: str, to_lang: str) -> bool:
         """Check if a language package is installed."""
         installed = argostranslate.package.get_installed_packages()
-        return any(
-            p.from_code == from_lang and p.to_code == to_lang
-            for p in installed
-        )
+        return any(p.from_code == from_lang and p.to_code == to_lang for p in installed)
 
     def get_installed_languages(self) -> list[tuple[str, str]]:
         """Get list of installed language pairs."""
         if self._installed_languages is None:
             installed = argostranslate.package.get_installed_packages()
-            self._installed_languages = [
-                (p.from_code, p.to_code) for p in installed
-            ]
+            self._installed_languages = [(p.from_code, p.to_code) for p in installed]
         return self._installed_languages
 
-    def translate(
-        self,
-        text: str,
-        from_lang: str,
-        to_lang: str
-    ) -> str:
+    def translate(self, text: str, from_lang: str, to_lang: str) -> str:
         """
         Translate text from one language to another.
 
@@ -103,7 +96,9 @@ class ArgosTranslator:
         translated = argostranslate.translate.translate(text, from_lang, to_lang)
         return translated
 
-    def translate_auto(self, text: str, detected_lang: str, target_lang: str | None = None) -> tuple[str, str]:
+    def translate_auto(
+        self, text: str, detected_lang: str, target_lang: str | None = None
+    ) -> tuple[str, str]:
         """
         Translate text with automatic target language selection.
 
@@ -121,17 +116,29 @@ class ArgosTranslator:
             return "", detected_lang
 
         # Normalize language codes
-        source = 'en' if detected_lang.startswith('en') else 'fr' if detected_lang.startswith('fr') else None
+        source = (
+            "en"
+            if detected_lang.startswith("en")
+            else "fr"
+            if detected_lang.startswith("fr")
+            else None
+        )
 
         if source is None:
             # Unsupported language, return original
             return text, detected_lang
 
         if target_lang:
-            target = 'en' if target_lang.startswith('en') else 'fr' if target_lang.startswith('fr') else None
+            target = (
+                "en"
+                if target_lang.startswith("en")
+                else "fr"
+                if target_lang.startswith("fr")
+                else None
+            )
         else:
             # Auto-select: translate to the other language
-            target = 'fr' if source == 'en' else 'en'
+            target = "fr" if source == "en" else "en"
 
         if source == target:
             return text, target

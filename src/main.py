@@ -1,19 +1,17 @@
 """Main entry point for Live Audio Translator."""
 
-import sys
-import signal
-import logging
 import atexit
+import logging
+import signal
+import sys
 
-from PyQt6.QtWidgets import QApplication, QLabel
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QApplication, QLabel
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%H:%M:%S'
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
 )
 log = logging.getLogger(__name__)
 
@@ -101,9 +99,9 @@ def main():
         # Import components
         log.info("Importing components...")
         from src.audio.capture import AudioCapture
+        from src.gui.main_window import MainWindow
         from src.transcription.whisper_stt import WhisperTranscriber
         from src.translation.argos_translator import ArgosTranslator
-        from src.gui.main_window import MainWindow
 
         # Initialize audio capture
         log.info("Initializing audio capture...")
@@ -125,7 +123,7 @@ def main():
         log.info("Loading Whisper model (small)...")
         splash.setText("Loading Whisper model (small)...\nThis may take a minute on first run.")
         app.processEvents()
-        transcriber = WhisperTranscriber(model_name='small')
+        transcriber = WhisperTranscriber(model_name="small")
         transcriber.load_model()
         log.info("Whisper model loaded successfully")
 
@@ -158,11 +156,11 @@ def main():
         log.error(f"Missing dependencies: {e}")
         splash.close()
         from PyQt6.QtWidgets import QMessageBox
+
         QMessageBox.critical(
             None,
             "Missing Dependencies",
-            f"Required packages are missing:\n\n{str(e)}\n\n"
-            "Please run the install script first."
+            f"Required packages are missing:\n\n{str(e)}\n\nPlease run the install script first.",
         )
         sys.exit(1)
 
@@ -170,10 +168,9 @@ def main():
         log.error(f"Initialization error: {e}")
         splash.close()
         from PyQt6.QtWidgets import QMessageBox
+
         QMessageBox.critical(
-            None,
-            "Initialization Error",
-            f"Failed to start the application:\n\n{str(e)}"
+            None, "Initialization Error", f"Failed to start the application:\n\n{str(e)}"
         )
         sys.exit(1)
 

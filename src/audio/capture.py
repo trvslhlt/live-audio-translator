@@ -1,7 +1,8 @@
 """Audio capture module for microphone input with voice activity detection."""
 
-import threading
 import queue
+import threading
+
 import numpy as np
 
 try:
@@ -62,21 +63,23 @@ class AudioCapture:
         devices = []
         for i in range(self._audio.get_device_count()):
             info = self._audio.get_device_info_by_index(i)
-            if info['maxInputChannels'] > 0:
-                devices.append({
-                    'index': i,
-                    'name': info['name'],
-                    'channels': info['maxInputChannels'],
-                    'sample_rate': int(info['defaultSampleRate'])
-                })
+            if info["maxInputChannels"] > 0:
+                devices.append(
+                    {
+                        "index": i,
+                        "name": info["name"],
+                        "channels": info["maxInputChannels"],
+                        "sample_rate": int(info["defaultSampleRate"]),
+                    }
+                )
         return devices
 
     def get_default_device(self) -> int | None:
         """Get the default input device index."""
         try:
             info = self._audio.get_default_input_device_info()
-            return info['index']
-        except IOError:
+            return info["index"]
+        except OSError:
             return None
 
     def start(self, device_index: int | None = None):
@@ -106,7 +109,7 @@ class AudioCapture:
             input=True,
             input_device_index=device_index,
             frames_per_buffer=self.CHUNK_SIZE,
-            stream_callback=self._audio_callback
+            stream_callback=self._audio_callback,
         )
 
         self._stream.start_stream()
@@ -121,7 +124,7 @@ class AudioCapture:
 
         # Calculate RMS (root mean square) for this chunk to detect speech
         audio_float = audio_data.astype(np.float32) / 32768.0
-        rms = np.sqrt(np.mean(audio_float ** 2))
+        rms = np.sqrt(np.mean(audio_float**2))
         is_silence = rms < self.silence_threshold
 
         with self._buffer_lock:
