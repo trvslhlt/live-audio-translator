@@ -27,6 +27,128 @@ from PyQt6.QtWidgets import (
 log = logging.getLogger(__name__)
 
 
+class FileTranscriptionWorker(QThread):
+    """Worker thread for transcribing audio files."""
+
+    # Signals
+    text_ready = pyqtSignal(str, str, str, str)  # original, translated, source_lang, timestamp
+    progress_updated = pyqtSignal(int, str)  # percent, message
+    finished_signal = pyqtSignal(bool, str)  # success, message
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, file_path: str, transcriber, translator, language_mode: str):
+        super().__init__()
+        self.file_path = file_path
+        self.transcriber = transcriber
+        self.translator = translator
+        self.language_mode = language_mode
+        self._cancelled = False
+
+    def cancel(self):
+        """Cancel the transcription."""
+        self._cancelled = True
+
+    def run(self):
+        """Process the audio file."""
+        try:
+            import whisper
+
+            self.progress_updated.emit(5, "Loading audio file...")
+
+            # Load audio using whisper's built-in loader (handles format conversion)
+            audio = whisper.load_audio(self.file_path)
+            duration = len(audio) / 16000  # 16kHz
+
+            self.progress_updated.emit(10, f"Audio loaded ({duration:.1f}s)")
+
+            if self._cancelled:
+                self.finished_signal.emit(False, "Cancelled")
+                return
+
+            # Determine chunking strategy
+            # For files under 30s, process as one chunk
+            # For longer files, chunk into ~15s segments
+            chunk_duration = 15.0  # seconds
+            sample_rate = 16000
+
+            if duration <= 30:
+                chunks = [(0, len(audio))]
+            else:
+                chunk_samples = int(chunk_duration * sample_rate)
+                chunks = []
+                start = 0
+                while start < len(audio):
+                    end = min(start + chunk_samples, len(audio))
+                    chunks.append((start, end))
+                    start = end
+
+            total_chunks = len(chunks)
+            log.info(f"Processing {total_chunks} chunk(s) from {duration:.1f}s audio file")
+
+            # Determine translation settings based on language mode
+            use_whisper_translate = self.language_mode in ("auto", "fr_to_en")
+            target_language = "en" if self.language_mode != "en_to_fr" else "fr"
+            source_lang_hint = None
+            if self.language_mode == "fr_to_en":
+                source_lang_hint = "fr"
+            elif self.language_mode == "en_to_fr":
+                source_lang_hint = "en"
+
+            for i, (start_sample, end_sample) in enumerate(chunks):
+                if self._cancelled:
+                    self.finished_signal.emit(False, "Cancelled")
+                    return
+
+                chunk_audio = audio[start_sample:end_sample]
+                chunk_start_time = start_sample / sample_rate
+
+                # Calculate timestamp for this chunk
+                mins = int(chunk_start_time // 60)
+                secs = int(chunk_start_time % 60)
+                timestamp = f"{mins:02d}:{secs:02d}"
+
+                progress_pct = 10 + int(80 * (i / total_chunks))
+                self.progress_updated.emit(progress_pct, f"Transcribing chunk {i + 1}/{total_chunks}...")
+
+                # Transcribe
+                result = self.transcriber.transcribe(
+                    chunk_audio,
+                    language=source_lang_hint,
+                    task="transcribe",
+                )
+                original_text = result["text"].strip()
+                detected_lang = result["language"]
+
+                if not original_text:
+                    continue
+
+                # Translate
+                if use_whisper_translate and target_language == "en":
+                    if detected_lang.startswith("en"):
+                        translated_text = original_text
+                    else:
+                        translate_result = self.transcriber.transcribe(
+                            chunk_audio,
+                            language=detected_lang,
+                            task="translate",
+                        )
+                        translated_text = translate_result["text"].strip()
+                else:
+                    translated_text, _ = self.translator.translate_auto(
+                        original_text, detected_lang, target_language
+                    )
+
+                self.text_ready.emit(original_text, translated_text, detected_lang, timestamp)
+
+            self.progress_updated.emit(100, "Complete!")
+            self.finished_signal.emit(True, f"Transcribed {duration:.1f}s of audio")
+
+        except Exception as e:
+            log.error(f"File transcription error: {e}")
+            self.error_occurred.emit(str(e))
+            self.finished_signal.emit(False, str(e))
+
+
 class TranscriptionWorker(QThread):
     """Worker thread for audio capture, transcription, and translation."""
 
@@ -210,9 +332,9 @@ class MainWindow(QMainWindow):
         # Language selector
         lang_label = QLabel("Mode:")
         self.language_combo = QComboBox()
-        self.language_combo.addItem("Auto-detect \u2192 English", "auto")
         self.language_combo.addItem("French \u2192 English (Best)", "fr_to_en")
         self.language_combo.addItem("English \u2192 French", "en_to_fr")
+        self.language_combo.addItem("Auto-detect \u2192 English", "auto")
         self.language_combo.setMinimumWidth(180)
         self.language_combo.currentIndexChanged.connect(self._on_language_changed)
 
@@ -289,12 +411,126 @@ class MainWindow(QMainWindow):
 
         button_layout.addStretch()
 
+        # Transcribe file button
+        self.transcribe_file_button = QPushButton("Transcribe File...")
+        self.transcribe_file_button.clicked.connect(self._transcribe_audio_file)
+        button_layout.addWidget(self.transcribe_file_button)
+
         # Load session button
         self.load_session_button = QPushButton("Load Session...")
         self.load_session_button.clicked.connect(self._load_session_folder)
         button_layout.addWidget(self.load_session_button)
 
         layout.addLayout(button_layout)
+
+        # File transcription worker (separate from live worker)
+        self._file_worker = None
+        self._file_progress = None
+
+    def _transcribe_audio_file(self):
+        """Open and transcribe an audio file."""
+        if not all([self.transcriber, self.translator]):
+            QMessageBox.warning(
+                self, "Not Ready", "The application is still initializing. Please wait."
+            )
+            return
+
+        # Don't allow while live transcription is running
+        if self.worker and self.worker.isRunning():
+            QMessageBox.warning(
+                self,
+                "Busy",
+                "Please stop live transcription before transcribing a file.",
+            )
+            return
+
+        # Get last used directory
+        default_dir = self._settings.value("last_audio_dir", str(Path.home() / "Documents"))
+
+        # Open file dialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select an audio file to transcribe",
+            default_dir,
+            "Audio Files (*.wav *.mp3 *.m4a *.flac *.ogg *.webm);;All Files (*)",
+        )
+
+        if not file_path:
+            return
+
+        # Remember directory
+        self._settings.setValue("last_audio_dir", str(Path(file_path).parent))
+
+        # Get language mode
+        language_mode = self.language_combo.currentData()
+
+        # Clear transcript area
+        self.transcript_area.clear()
+
+        # Create progress dialog
+        self._file_progress = QProgressDialog("Preparing...", "Cancel", 0, 100, self)
+        self._file_progress.setWindowTitle("Transcribing Audio File")
+        self._file_progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self._file_progress.setMinimumDuration(0)
+        self._file_progress.setValue(0)
+        self._file_progress.canceled.connect(self._cancel_file_transcription)
+        self._file_progress.show()
+
+        # Create and start worker
+        self._file_worker = FileTranscriptionWorker(
+            file_path, self.transcriber, self.translator, language_mode
+        )
+        self._file_worker.text_ready.connect(self._on_file_text_ready)
+        self._file_worker.progress_updated.connect(self._on_file_progress)
+        self._file_worker.finished_signal.connect(self._on_file_finished)
+        self._file_worker.error_occurred.connect(self._on_file_error)
+        self._file_worker.start()
+
+        # Disable UI during transcription
+        self.transcribe_file_button.setEnabled(False)
+        self.start_button.setEnabled(False)
+        self.status_label.setText(f"Transcribing: {Path(file_path).name}")
+
+    def _cancel_file_transcription(self):
+        """Cancel file transcription."""
+        if self._file_worker:
+            self._file_worker.cancel()
+
+    @pyqtSlot(str, str, str, str)
+    def _on_file_text_ready(self, original: str, translated: str, source_lang: str, timestamp: str):
+        """Handle text from file transcription."""
+        self._display_entry(original, translated, source_lang, timestamp)
+
+    @pyqtSlot(int, str)
+    def _on_file_progress(self, percent: int, message: str):
+        """Update file transcription progress."""
+        if self._file_progress:
+            self._file_progress.setValue(percent)
+            self._file_progress.setLabelText(message)
+
+    @pyqtSlot(bool, str)
+    def _on_file_finished(self, success: bool, message: str):
+        """Handle file transcription completion."""
+        if self._file_progress:
+            self._file_progress.close()
+            self._file_progress = None
+
+        self._file_worker = None
+
+        # Re-enable UI
+        self.transcribe_file_button.setEnabled(True)
+        self.start_button.setEnabled(True)
+
+        if success:
+            self.status_label.setText(message)
+            QMessageBox.information(self, "Transcription Complete", message)
+        else:
+            self.status_label.setText("Transcription failed")
+
+    @pyqtSlot(str)
+    def _on_file_error(self, error_message: str):
+        """Handle file transcription error."""
+        QMessageBox.critical(self, "Transcription Error", f"Error: {error_message}")
 
     def _load_session_folder(self):
         """Load a previously saved session folder."""
